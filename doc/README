@@ -1,0 +1,24 @@
+To install, simply git clone into the directory of your choice, 
+let's call it /my/install/dir.
+
+The only thing you need to change is to set the value of the 
+EMBEDDED_TOOLS_DIR variable in /my/install/dir/bin/configure-sdk 
+to /my/install/dir.
+
+Install the toolchain you need under /my/install/dir/toolchain, 
+or with your package manager if your distribution provides it.
+
+To see which MCU are already supported, list the content of 
+/my/install/dir/lib.
+
+To install the latest version of an MCU's SDK, run:
+/my/install/dir/bin/build-sdk MY_MCU
+
+To create a new project for an MCU, copy it's blinky and start from 
+there: cp -r /my/install/dir/blinky/MY_MCU /my/project/dir
+See the comments in its Makefile for a little help.
+
+To build your project, open a shell and type:
+
+    eval "$(/my/install/dir/bin/configure-sdk MY_MCU)"
+    make

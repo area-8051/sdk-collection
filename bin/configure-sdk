@@ -1,0 +1,120 @@
+#! /usr/bin/env sh
+
+# SPDX-License-Identifier: BSD-2-Clause
+# 
+# Copyright (c) 2022 Vincent DEFERT. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions 
+# are met:
+# 
+# 1. Redistributions of source code must retain the above copyright 
+# notice, this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright 
+# notice, this list of conditions and the following disclaimer in the 
+# documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+# POSSIBILITY OF SUCH DAMAGE.
+
+if [ -z "$1" ]; then
+    echo "Usage: $(basename "$0") <Target MCU>"
+    exit 1
+fi
+
+SDK_TARGET=$1
+EMBEDDED_TOOLS_DIR=/home/tools
+SCRIPTS_DIR="${EMBEDDED_TOOLS_DIR}/lib"
+UPLOAD_DEVICE=ttyUSB0
+
+toUTF8() {
+    if ! iconv -f GB18030 -t UTF-8 -o "$2" "$1"; then
+        echo "File: ${1}"
+        echo "Warning: File copied without conversion."
+        cp -f "$1" "$2"
+    fi
+}
+
+mvToUTF8() {
+	local srcPattern="$1"
+	local dstDir="$2"
+	
+	mkdir -p "${dstDir}"
+	
+    for f in ${srcPattern}; do
+        toUTF8 "${f}" "${dstDir}/$(basename "${f}")"
+        rm -f "${f}"
+    done
+}
+
+if [ -d "${SCRIPTS_DIR}/${SDK_TARGET}" ]; then
+    SDK_DIR="${EMBEDDED_TOOLS_DIR}/sdk/${SDK_TARGET}"
+    # In order to configure the environment for a given SDK, invoke:
+    # eval "$(${EMBEDDED_TOOLS_DIR}/bin/configure-sdk <Target MCU>)"
+    # before running make.
+    SCRIPT_NAME=$(basename "$0")
+    ACTION=configure-sdk
+    LISTENV=yes
+    
+    case ${SCRIPT_NAME} in
+    build-sdk)
+        ACTION=build-sdk
+        LISTENV=no
+        ;;
+    
+    configure-sdk)
+        if [ ! -d "${SDK_DIR}" ]; then
+            echo "Missing SDK, please run 'build-sdk ${SDK_TARGET}' to build it"
+            exit 1
+        fi
+        ;;
+    esac
+    
+    if [ ! -f "${SCRIPTS_DIR}/${SDK_TARGET}/${ACTION}" ]; then
+        echo "Invalid target MCU '${SDK_TARGET}' (no lib/${SDK_TARGET}/${SCRIPT_NAME})"
+        exit 1
+    fi
+    
+    case ${SCRIPT_NAME} in
+    build-sdk)
+        SDK_BACKUP="${SDK_DIR}.backup"
+        
+		if [ -e "${SDK_BACKUP}" ]; then
+			rm -rf ${SDK_BACKUP}
+		fi
+		
+        if [ -e "${SDK_DIR}" ]; then
+            mv ${SDK_DIR} ${SDK_BACKUP}
+        fi
+        
+        mkdir -p ${SDK_DIR}
+        ;;
+    esac
+    
+	. ${SCRIPTS_DIR}/${SDK_TARGET}/${ACTION}
+	
+	if [ "${LISTENV}" = 'yes' ]; then
+		for varname in SDK_TARGET SDK_DIR SDK_ARCH SDK_INCDIR SDK_INCLUDES SDK_LIBS SDK_LIBDIR SDK_LDSCRIPT \
+			SDK_STARTUP SDK_FLASH_TOOL TOOLCHAIN_PREFIX TOOLCHAIN_DIR TOOLCHAIN_ETC; do
+			if [ -n "$(eval "echo \$${varname}")" ]; then
+				echo "export ${varname}=\"$(eval "echo \$${varname}")\""
+			fi
+		done
+		
+		echo "export PATH=\"${TOOLCHAIN_DIR}/bin:\${PATH}\""
+	fi
+else
+    echo "Target MCU '${SDK_TARGET}' is not supported."
+    exit 1
+fi

@@ -1,0 +1,97 @@
+#! /usr/bin/env sh
+
+# SPDX-License-Identifier: BSD-2-Clause
+# 
+# Copyright (c) 2022 Vincent DEFERT. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions 
+# are met:
+# 
+# 1. Redistributions of source code must retain the above copyright 
+# notice, this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright 
+# notice, this list of conditions and the following disclaimer in the 
+# documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+# POSSIBILITY OF SUCH DAMAGE.
+
+TOOLCHAIN_PREFIX="csky-elfabiv2"
+. ${SCRIPTS_DIR}/configure-toolchain.inc
+
+if [ ! -x "${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc" ]; then
+    echo "FATAL: The ${TOOLCHAIN_PREFIX} toolchain is not installed"
+    exit 1
+fi
+
+# Original Winner Micro W801 SDK
+git clone https://gitee.com/iosetting/wm-sdk-w80x.git
+cd wm-sdk-w80x
+
+cat <<EOF > tools/w800/.config
+#
+# Firmware Configuration
+#
+CONFIG_W800_TARGET_NAME=${SDK_TARGET}
+CONFIG_W800_IMAGE_TYPE=1
+CONFIG_W800_IMAGE_HEADER=80D0000
+CONFIG_W800_RUN_ADDRESS=80D0400
+CONFIG_W800_UPDATE_ADDRESS=8010000
+CONFIG_W800_PRIKEY_SEL=0
+CONFIG_W800_IMAGE_SIGNATURE=0
+CONFIG_W800_CODE_ENCRYPT=0
+CONFIG_W800_SIGN_PUBKEY_SRC=0
+
+#
+# Download Configuration
+#
+CONFIG_W800_DOWNLOAD_PORT=${UPLOAD_DEVICE}
+CONFIG_W800_DOWNLOAD_RATE=115200
+
+#
+# Compile Configuration
+#
+CONFIG_W800_USE_LIB=n
+CONFIG_W800_USE_NIMBLE=y
+CONFIG_W800_FIRMWARE_DEBUG=n
+
+#
+# Toolchain Configuration
+#
+CONFIG_W800_TOOLCHAIN_PREFIX=${TOOLCHAIN_PREFIX}
+CONFIG_W800_TOOLCHAIN_PATH=${TOOLCHAIN_DIR}/bin/
+EOF
+
+if true; then
+    make
+else
+    for f in $(ls tools/w800/*.mk); do
+        sed -i "s/^\([[:space:]]*\)@\(.*\)/\1\2/g" $f
+    done
+
+    make VERBOSE=YES 2>&1 | tee ../${SDK_TARGET}.make.log
+fi
+
+mv doc include platform ${SDK_DIR}/
+mv demo ${SDK_DIR}/examples
+mv ld/w800 ${SDK_DIR}/ld
+mv lib/w800 ${SDK_DIR}/lib
+mv tools/w800 ${SDK_DIR}/tools
+sed -i "/demo\.h/d" ${SDK_DIR}/include/wm_include.h
+rm -rf ${SDK_DIR}/tools/*.exe ${SDK_DIR}/tools/projects
+chmod -x ${SDK_DIR}/tools/*.c
+
+cd ..
+rm -rf wm-sdk-w80x

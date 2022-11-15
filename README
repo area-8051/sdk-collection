@@ -1,0 +1,23 @@
+This work in progress is an attempt to bring some order in the chaos
+of MCU vendor SDK.
+
+The key idea is to make them fit into the same tree structure, and to
+adopt a common project structure.
+
+The target tree structure is populated with files extracted from
+archives downloaded from each vendor's web site, or cloned from
+some GitHub or Gitee repository.
+
+Scripts take care of dispatching files in the appropriate places, 
+convert character sets, and build libraries so each project doesn't 
+need to also build its HAL. This allows to easily rebuild a chip's
+SDK when it gets updated by its vendor.
+
+Other scripts define environment variables for use in Makefiles.
+Before running make, a specific command must be issued to properly
+initialise the environment:
+
+    eval "$(/my_install_dir/bin/configure-sdk MY_MCU)"
+
+The blinky subdirectory contains project examples for each chip
+tested so far.

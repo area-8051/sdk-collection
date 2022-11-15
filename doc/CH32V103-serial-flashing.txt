@@ -1,0 +1,24 @@
+CH32V103 serial flashing procedure:
+
+- Connect a USB-to-serial adapter to the board: adapter RX to board PA9, 
+adapter TX to board PA10. Power the board with a 3.3V supply.
+
+- Launch WCHISPTool, select the "CH32Vx Series" tab, select Chip model, 
+Download type, COM port and User file.
+
+- On the board, hold the BOOT0 button down and press NRST.
+
+- In WCHISPTool, click the "Download" button.
+
+- If you want to enable further flashing with OpenOCD, 
+click the "Remove Protect" button.
+
+- Release the BOOT0 button and press the NRST button to start your firmware.
+
+- Note: for this to work, the BOOT1 pin (= PB2) must be kept at a low 
+level. This is the case on the WeAct BluePill+, as PB2 controls an LED 
+connected to the ground.
+
+To find this, I had to google "ch32v103串口下载" and the page describing 
+the procedure was on the first page of results.
+https://www.risc-v1.com/thread-1698-1-1.html

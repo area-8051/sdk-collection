@@ -1,0 +1,144 @@
+#! /usr/bin/env sh
+
+# SPDX-License-Identifier: BSD-2-Clause
+# 
+# Copyright (c) 2022 Vincent DEFERT. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions 
+# are met:
+# 
+# 1. Redistributions of source code must retain the above copyright 
+# notice, this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright 
+# notice, this list of conditions and the following disclaimer in the 
+# documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+# POSSIBILITY OF SUCH DAMAGE.
+
+TOOLCHAIN_PREFIX="riscv-none-embed"
+. ${SCRIPTS_DIR}/configure-toolchain.inc
+
+if [ ! -x "${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc" ]; then
+    echo "FATAL: The ${TOOLCHAIN_PREFIX} toolchain must be installed."
+    echo "If your distribution doesn't provide it as a package, you can download"
+    echo "it from: https://github.com/riscv-collab/riscv-gnu-toolchain/releases"
+    exit 1
+fi
+
+ZIP_FILE="${EMBEDDED_TOOLS_DIR}/downloads/CH583EVT.zip"
+
+if [ ! -f "${ZIP_FILE}" ]; then
+    echo "FATAL: $(basename "${ZIP_FILE}") is missing."
+    echo "Please download it from: http://www.wch.cn/"
+    echo "and save it to: ${EMBEDDED_TOOLS_DIR}/downloads"
+    exit 1
+fi
+
+ZIP_DIR="$(basename "${ZIP_FILE%*.zip}")"
+
+unzip -q -O GB18030 ${ZIP_FILE} -d ${ZIP_DIR}
+cd ${ZIP_DIR}
+
+find EVT -type d -name obj -exec rm -rf {} +
+find EVT -type d -name .settings -exec rm -rf {} +
+find EVT -type f -name '*.wvproj' -delete
+find EVT -type f -name '.*project' -delete
+
+mkdir -p ${SDK_DIR}/doc
+
+find EVT -type f -name "*.PDF" | while IFS="\n" read f; do
+    mv "${f}" "${SDK_DIR}/doc/$(basename "${f%.PDF}.pdf")"
+done
+
+find EVT -type f -name "*.pdf" | while IFS="\n" read f; do
+    mv "${f}" "${SDK_DIR}/doc/$(basename "${f}")"
+done
+
+mv EVT/EXAM/SRC/Ld ${SDK_DIR}/ld
+mkdir -p ${SDK_DIR}/include ${SDK_DIR}/lib ${SDK_DIR}/src ${SDK_DIR}/src/startup
+mv EVT/EXAM/SRC/StdPeriphDriver/*.a ${SDK_DIR}/lib/
+
+mvToUTF8 "EVT/EXAM/SRC/StdPeriphDriver/inc/*.h" "${SDK_DIR}/include/drivers"
+mvToUTF8 "EVT/EXAM/SRC/StdPeriphDriver/*.c" "${SDK_DIR}/src/drivers"
+mvToUTF8 "EVT/EXAM/SRC/RVMSIS/*.h" "${SDK_DIR}/include/RVMSIS"
+mvToUTF8 "EVT/EXAM/SRC/RVMSIS/*.c" "${SDK_DIR}/src/RVMSIS"
+mvToUTF8 "EVT/EXAM/SRC/Startup/*.S" "${SDK_DIR}/src/startup"
+
+rm -rf EVT/EXAM/SRC
+
+find EVT/EXAM -mindepth 2 -maxdepth 2 -type d -name src | while IFS="\n" read srcdir; do
+    dstdir=${SDK_DIR}/examples/$(basename $(dirname ${srcdir}))
+    mvToUTF8 "${srcdir}/*" "${dstdir}"
+done
+
+mv EVT/EXAM/USB/Host/USB_LIB/*.a ${SDK_DIR}/lib/
+
+mvToUTF8 "EVT/EXAM/USB/Host/USB_LIB/*.h" "${SDK_DIR}/include/USB"
+mvToUTF8 "EVT/EXAM/USB/Host/USB_LIB/*.c" "${SDK_DIR}/examples/USB/Host/USB_LIB"
+
+rm -rf EVT/EXAM/USB/Host/USB_LIB
+
+find EVT/EXAM/USB -type d -name src -printf "%P\n" | grep -vF /obj/ | while IFS="\n" read srcdir; do
+    dstdir=${SDK_DIR}/examples/USB/$(dirname ${srcdir})
+    mvToUTF8 "EVT/EXAM/USB/${srcdir}/*" "${dstdir}"
+done
+
+mvToUTF8 "EVT/EXAM/BLE/LIB/*.h" "${SDK_DIR}/include/USB"
+
+mv EVT/EXAM/BLE/LIB/*.hex ${SDK_DIR}/lib/
+mv EVT/EXAM/BLE/LWNS/LWNS/LIBWCHLWNS.a ${SDK_DIR}/lib/libWCHLWNS.a
+mv EVT/EXAM/BLE/MESH/MESH_LIB/LIBMESH.a ${SDK_DIR}/lib/libMESH.a
+mv EVT/EXAM/BLE/MESH/MESH_LIB/LIBCH58xMESHROM.a ${SDK_DIR}/lib/libCH58xMESHROM.a
+mv EVT/EXAM/BLE/LIB/LIBCH58xBLE.a ${SDK_DIR}/lib/libCH58xBLE.a
+rm -rf EVT/EXAM/BLE/LIB
+
+find EVT/EXAM/BLE -type f -printf "%P\n" | while IFS="\n" read f; do
+    dstdir="${SDK_DIR}/examples/BLE/$(dirname "${f}")"
+    mvToUTF8 "EVT/EXAM/BLE/${f}" "${dstdir}"
+done
+
+cd ..
+rm -rf ${ZIP_DIR}
+
+# Create driver library ================================================
+
+CFLAGS="-march=rv32imac -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8\
+ -mno-save-restore -fmessage-length=0 -fsigned-char\
+ -ffunction-sections -fdata-sections -Os"
+
+SDK_INCDIR="${SDK_DIR}/include"
+
+SDK_INCLUDES=
+
+for subdir in $(find ${SDK_INCDIR} -type d); do
+    SDK_INCLUDES="${SDK_INCLUDES} -I${subdir}"
+done
+
+cd ${SDK_DIR}/src
+
+# Startup code
+f="$(find startup -type f -name '*.S')"
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+    -o "../lib/$(basename ${f} | sed "s/\(.*\)\.S$/\1.o/")" -c "${f}"
+
+# HAL library
+find . -type f -name '*.c' | while IFS="\n" read f; do
+    ${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+        -o "$(basename ${f} | sed "s/\(.*\)\.c$/\1.o/")" -c "${f}"
+done
+
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-ar ru ../lib/libCH58xHAL.a *.o
+rm -f *.o

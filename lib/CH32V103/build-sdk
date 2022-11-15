@@ -1,0 +1,142 @@
+#! /usr/bin/env sh
+
+# SPDX-License-Identifier: BSD-2-Clause
+# 
+# Copyright (c) 2022 Vincent DEFERT. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions 
+# are met:
+# 
+# 1. Redistributions of source code must retain the above copyright 
+# notice, this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright 
+# notice, this list of conditions and the following disclaimer in the 
+# documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+# POSSIBILITY OF SUCH DAMAGE.
+
+TOOLCHAIN_PREFIX="riscv-none-embed"
+. ${SCRIPTS_DIR}/configure-toolchain.inc
+
+if [ ! -x "${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc" ]; then
+    echo "FATAL: The ${TOOLCHAIN_PREFIX} toolchain must be installed."
+    echo "If your distribution doesn't provide it as a package, you can download"
+    echo "it from: https://github.com/riscv-collab/riscv-gnu-toolchain/releases"
+    exit 1
+fi
+
+ZIP_FILE="${EMBEDDED_TOOLS_DIR}/downloads/CH32V103EVT.zip"
+
+if [ ! -f "${ZIP_FILE}" ]; then
+    echo "FATAL: $(basename "${ZIP_FILE}") is missing."
+    echo "Please download it from: http://www.wch.cn/"
+    echo "and save it to: ${EMBEDDED_TOOLS_DIR}/downloads"
+    exit 1
+fi
+
+ZIP_DIR="$(basename "${ZIP_FILE%*.zip}")"
+
+unzip -q -O GB18030 ${ZIP_FILE} -d ${ZIP_DIR}
+cd ${ZIP_DIR}
+
+find EVT -type d -name obj -exec rm -rf {} +
+find EVT -type d -name .settings -exec rm -rf {} +
+find EVT -type f -name '*.wvproj' -delete
+find EVT -type f -name '.*project' -delete
+find EVT -type f -name '.template' -delete
+find EVT -type f -name '.gitmodule' -delete
+find EVT -type f -name '.launch' -delete
+
+mkdir -p ${SDK_DIR}/doc
+
+find EVT -type f -name "*.PDF" | while IFS="\n" read f; do
+    mv "${f}" "${SDK_DIR}/doc/$(basename "${f%.PDF}.pdf")"
+done
+
+find EVT -type f -name "*.pdf" | while IFS="\n" read f; do
+    mv "${f}" "${SDK_DIR}/doc/$(basename "${f}")"
+done
+
+mkdir -p \
+ ${SDK_DIR}/include \
+ ${SDK_DIR}/lib \
+ ${SDK_DIR}/examples \
+ ${SDK_DIR}/src \
+ ${SDK_DIR}/src/core \
+ ${SDK_DIR}/src/debug \
+ ${SDK_DIR}/src/drivers \
+ ${SDK_DIR}/src/startup
+mv "EVT/EXAM/SRC/Ld" "${SDK_DIR}/ld"
+mv "EVT/EXAM/USB/USBHD/Udisk_Lib/libRV3UFI.a" "${SDK_DIR}/lib/"
+mvToUTF8 "EVT/EXAM/USB/USBHD/Udisk_Lib/CHRV3UFI.h" "${SDK_DIR}/include"
+mvToUTF8 "EVT/EXAM/SRC/Core/*.h" "${SDK_DIR}/include"
+mvToUTF8 "EVT/EXAM/SRC/Core/*.c" "${SDK_DIR}/src/core"
+mvToUTF8 "EVT/EXAM/SRC/Debug/*.h" "${SDK_DIR}/include"
+mvToUTF8 "EVT/EXAM/SRC/Debug/*.c" "${SDK_DIR}/src/debug"
+mvToUTF8 "EVT/EXAM/SRC/Peripheral/inc/*" "${SDK_DIR}/include"
+mvToUTF8 "EVT/EXAM/SRC/Peripheral/src/*" "${SDK_DIR}/src/drivers"
+mvToUTF8 "EVT/EXAM/SRC/Startup/*.S" "${SDK_DIR}/src/startup"
+toUTF8 "EVT/EXAM/BKP/User/system_ch32v10x.h" "${SDK_DIR}/include/system_ch32v10x.h"
+toUTF8 "EVT/EXAM/BKP/User/system_ch32v10x.c" "${SDK_DIR}/src/drivers/system_ch32v10x.c"
+toUTF8 "EVT/EXAM/BKP/User/ch32v10x_conf.h" "${SDK_DIR}/include/ch32v10x_conf.h"
+sed -i "/ch32v10x_it/d" "${SDK_DIR}/include/ch32v10x_conf.h"
+
+rm -rf EVT/EXAM/SRC
+
+find EVT/EXAM -mindepth 1 -maxdepth 1 -type d | while IFS="\n" read srcdir; do
+    mv "${srcdir}" "${SDK_DIR}/examples/"
+done
+
+olddir="$(pwd)"
+cd "${SDK_DIR}/examples/USB/USBHD/Udisk_Lib"
+for f in *; do
+    mvToUTF8 "${f}" "${f}.new"
+    mv "${f}.new" "${f}"
+done
+cd "${olddir}"
+
+cd ..
+rm -rf ${ZIP_DIR}
+
+# Create driver library ================================================
+
+CFLAGS="-march=rv32imac -mabi=ilp32 -msmall-data-limit=8\
+ -mno-save-restore -fmessage-length=0 -fsigned-char\
+ -ffunction-sections -fdata-sections -Os"
+
+SDK_INCDIR="${SDK_DIR}/include"
+
+SDK_INCLUDES=
+
+for subdir in $(find ${SDK_INCDIR} -type d); do
+    SDK_INCLUDES="${SDK_INCLUDES} -I${subdir}"
+done
+
+cd ${SDK_DIR}/src
+
+# Startup code
+f="$(find startup -type f -name '*.S')"
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+    -o "../lib/$(basename ${f} | sed "s/\(.*\)\.S$/\1.o/")" -c "${f}"
+
+# HAL library
+find . -type f -name '*.c' | while IFS="\n" read f; do
+    ${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+        -o "$(basename ${f} | sed "s/\(.*\)\.c$/\1.o/")" -c "${f}"
+done
+
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-ar ru ../lib/libCH32V103.a *.o
+rm -f *.o

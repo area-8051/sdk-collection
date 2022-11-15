@@ -1,0 +1,5 @@
+Prefix,System,C library
+csky-elfabiv2,none,minilibc
+csky-elf-noneabiv2,none,newlib
+csky-linux-gnuabiv2,Linux,glibc
+csky-linux-uclibcabiv2,Linux,UClibc

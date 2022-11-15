@@ -1,0 +1,137 @@
+#! /usr/bin/env sh
+
+# SPDX-License-Identifier: BSD-2-Clause
+# 
+# Copyright (c) 2022 Vincent DEFERT. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions 
+# are met:
+# 
+# 1. Redistributions of source code must retain the above copyright 
+# notice, this list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright 
+# notice, this list of conditions and the following disclaimer in the 
+# documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+# POSSIBILITY OF SUCH DAMAGE.
+
+TOOLCHAIN_PREFIX="riscv-none-embed"
+. ${SCRIPTS_DIR}/configure-toolchain.inc
+
+if [ ! -x "${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc" ]; then
+    echo "FATAL: The ${TOOLCHAIN_PREFIX} toolchain must be installed."
+    echo "If your distribution doesn't provide it as a package, you can download"
+    echo "it from: https://github.com/riscv-collab/riscv-gnu-toolchain/releases"
+    exit 1
+fi
+
+OPENOCD_VERSION="$(openocd --version 2>&1 | grep Debugger | cut -d ' ' -f 4)"
+
+if [ -n "${OPENOCD_VERSION}" ]; then
+    OPENOCD_MAJOR="$(echo "${OPENOCD_VERSION}" | cut -d '.' -f 1)"
+    OPENOCD_MINOR="$(echo "${OPENOCD_VERSION}" | cut -d '.' -f 2)"
+    
+    if [ ${OPENOCD_MAJOR} -eq 0 -a ${OPENOCD_MINOR} -lt 11 ]; then
+       echo "FATAL: OpenOCD ${OPENOCD_VERSION} found, but 0.11.0 or higher required"
+       exit 1
+    fi
+else
+    echo "FATAL: OpenOCD version 0.11.0 or higher must be installed"
+    exit 1
+fi
+
+ZIP_FILE="${EMBEDDED_TOOLS_DIR}/downloads/GD32VF103_Firmware_Library_V1.1.4.zip"
+
+if [ ! -f "${ZIP_FILE}" ]; then
+    echo "FATAL: $(basename "${ZIP_FILE}") is missing."
+    echo "Please download it from: http://www.gd32mcu.com/en/download/7?kw=GD32VF1"
+    echo "and save it to: ${EMBEDDED_TOOLS_DIR}/downloads"
+    exit 1
+fi
+
+ZIP_DIR="$(basename "${ZIP_FILE%*.zip}")"
+
+unzip ${ZIP_FILE}
+cd ${ZIP_DIR}
+
+mkdir -p ${SDK_DIR}/lib ${SDK_DIR}/include ${SDK_DIR}/src \
+    ${SDK_DIR}/ld ${SDK_DIR}/doc
+
+mv Examples ${SDK_DIR}/examples
+
+find Docs -type f -name "*.pdf" | while IFS="\n" read f; do
+    mv "${f}" "${SDK_DIR}/doc/$(basename "${f}")"
+done
+
+mv Firmware/RISCV/drivers/*.h ${SDK_DIR}/include/
+mv Firmware/RISCV/stubs/*.h ${SDK_DIR}/include/
+mv Firmware/RISCV/env_Eclipse/*.lds ${SDK_DIR}/ld/
+mv Firmware/RISCV/env_Eclipse ${SDK_DIR}/src/core
+mv Firmware/RISCV/drivers/*.c ${SDK_DIR}/src/core/
+mv Firmware/RISCV/stubs ${SDK_DIR}/src/
+cp ${SDK_DIR}/examples/BKP/Backup_Data/gd32vf103_libopt.h ${SDK_DIR}/include/
+mv Firmware/GD32VF103_standard_peripheral/Include/*.h ${SDK_DIR}/include/
+mv Firmware/GD32VF103_standard_peripheral/*.h ${SDK_DIR}/include/
+mv Firmware/GD32VF103_standard_peripheral/Source ${SDK_DIR}/src/drivers
+mv Firmware/GD32VF103_standard_peripheral/*.c ${SDK_DIR}/src/drivers/
+mv Firmware/GD32VF103_usbfs_library ${SDK_DIR}/src/usbfs
+
+cd ..
+rm -rf ${ZIP_DIR}
+
+# Create driver library ================================================
+
+CFLAGS="-march=rv32imac -mabi=ilp32 -mcmodel=medlow \
+ -msmall-data-limit=8 -mno-save-restore -fmessage-length=0 \
+ -fsigned-char -ffunction-sections -fdata-sections -Os \
+ -DHXTAL_VALUE=8000000UL"
+
+SDK_INCDIR="${SDK_DIR}/include"
+
+SDK_INCLUDES=
+
+for subdir in $(find ${SDK_INCDIR} -type d); do
+    SDK_INCLUDES="${SDK_INCLUDES} -I${subdir}"
+done
+
+cd ${SDK_DIR}/src
+
+# Startup code etc.
+find core -type f | while IFS="\n" read f; do
+    ${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+        -o "$(basename ${f} | sed "s/\(.*\)\..$/\1.o/")" -c "${f}"
+done
+
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-ar ru ../lib/libstartup.a *.o
+rm -f *.o
+
+# libc stubs
+find stubs -type f | while IFS="\n" read f; do
+    ${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+        -o "$(basename ${f} | sed "s/\(.*\)\.c$/\1.o/")" -c "${f}"
+done
+
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-ar ru ../lib/libstubs.a *.o
+rm -f *.o
+
+# HAL library
+find drivers -type f -name '*.c' | while IFS="\n" read f; do
+    ${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-gcc ${CFLAGS} ${SDK_INCLUDES} \
+        -o "$(basename ${f} | sed "s/\(.*\)\.c$/\1.o/")" -c "${f}"
+done
+
+${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-ar ru ../lib/libhal.a *.o
+rm -f *.o
