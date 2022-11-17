@@ -310,7 +310,7 @@ static void cfg_srv_rsp_handler( const cfg_srv_status_t *val )
  *
  * @return  none
  */
-static void lpn_state(uint8_t state)
+static void lpn_state(uint16_t friend_addr, uint8_t state)
 {
     if(state == LPN_FRIENDSHIP_ESTABLISHED)
     {

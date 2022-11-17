@@ -241,6 +241,10 @@ uint16_t Calibration_LSI_FLASH(void)
         loc_t = loc;
         diffc = diff_1 * CNT_STEP_K;
         loc = loc - diffc;
+        if(loc > RB_INT32K_TUNE)
+        {
+            loc = RB_INT32K_TUNE;
+        }
         if(loc == loc_t)
         {
             if(diff_1 > 0)
@@ -392,6 +396,10 @@ uint16_t Calibration_LSI_RAM(void)
         loc_t = loc;
         diffc = diff_1 * CNT_STEP_K;
         loc = loc - diffc;
+        if(loc > RB_INT32K_TUNE)
+        {
+            loc = RB_INT32K_TUNE;
+        }
         if(loc == loc_t)
         {
             if(diff_1 > 0)

@@ -24,8 +24,9 @@
 uint32_t CH57X_LowPower(uint32_t time)
 {
 #if(defined(HAL_SLEEP)) && (HAL_SLEEP == TRUE)
-    uint32_t time_sleep, time_curr, irq_status;
-
+    uint32_t time_sleep, time_curr;
+    unsigned long irq_status;
+    
     SYS_DisableAllIrq(&irq_status);
     time_curr = RTC_GetCycle32k();
     // 检测睡眠时间
@@ -35,7 +36,9 @@ uint32_t CH57X_LowPower(uint32_t time)
         time_sleep = time - time_curr;
     }
 
-    if ((time_sleep < SLEEP_RTC_MIN_TIME)) {
+    // 若睡眠时间小于最小睡眠时间或大于最大睡眠时间，则不睡眠
+    if ((time_sleep < SLEEP_RTC_MIN_TIME) || 
+        (time_sleep > SLEEP_RTC_MAX_TIME)) {
         SYS_RecoverIrq(irq_status);
         return 2;
     }

@@ -215,6 +215,10 @@ void RF_Init(void)
     rfConfig.LLEMode = LLE_MODE_AUTO;
     rfConfig.rfStatusCB = RF_2G4StatusCallBack;
     rfConfig.RxMaxlen = 251;
+#if (CLK_OSC32K != 0)
+    //It is better to choose a shorter heartbeat interval for the internal clock.
+    rfConfig.HeartPeriod = 4;
+#endif
     state = RF_Config(&rfConfig);
     PRINT("rf 2.4g init: %x\n", state);
 //    { // RX mode

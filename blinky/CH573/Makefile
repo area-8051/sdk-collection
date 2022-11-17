@@ -129,11 +129,11 @@ clean:
 doc:
 	doxygen ${TOOLCHAIN_ETC}/doxygen.conf
 
-# For the "make upload" command to succeed, you need to enable 
-# the chip's simulation interface with WCHISPTool first. You 
-# should then disable it for normal device usage.
+# To enable flashing (and debugging) with OpenOCD, you need to enable
+# the chip's simulation interface with WCHISPTool first. You should
+# then disable it for normal device usage.
 upload:
-	${SDK_FLASH_TOOL} -f $(patsubst %/openocd, %, ${SDK_FLASH_TOOL})/wch-riscv.cfg -c "program $(ELF_FILE) verify reset exit 0x00000000"
+	${SDK_DEBUG_TOOL} -f $(patsubst %/openocd, %, ${SDK_FLASH_TOOL})/wch-riscv.cfg -c "program $(ELF_FILE) verify reset exit 0x08000000"
 
 console:
 	mate-terminal -e "minicom -b $(CONSOLE_BAUDRATE) -D /dev/$(CONSOLE_PORT)"

@@ -45,4 +45,5 @@ SDK_LIBS="-lCH57xHAL -lISP573 -lCH57xBLE -lRV3UFI"
 SDK_STARTUP="$(find ${SDK_LIBDIR} -type f -name 'startup*.o')"
 SDK_LDSCRIPT="$(find ${SDK_DIR}/ld -type f -name '*.ld')"
 
-SDK_FLASH_TOOL="$(dirname "${TOOLCHAIN_DIR}")/openocd-wch/bin/openocd"
+SDK_DEBUG_TOOL="$(dirname "${TOOLCHAIN_DIR}")/openocd-wch/bin/openocd"
+SDK_FLASH_TOOL="$(dirname "${TOOLCHAIN_DIR}")/wchisptool/wchisptool"

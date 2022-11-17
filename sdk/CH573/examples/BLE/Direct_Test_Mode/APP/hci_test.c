@@ -195,6 +195,8 @@ static int ctrl_bb_cmd_handle(uint16_t ocf, struct simple_buf *cmd,
 	default:
 		return -1;
 	}
+
+	return 0;
 }
 
 static int controller_cmd_handle(uint16_t ocf, struct simple_buf *cmd,

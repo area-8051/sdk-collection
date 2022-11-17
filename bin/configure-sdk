@@ -106,7 +106,7 @@ if [ -d "${SCRIPTS_DIR}/${SDK_TARGET}" ]; then
 	
 	if [ "${LISTENV}" = 'yes' ]; then
 		for varname in SDK_TARGET SDK_DIR SDK_ARCH SDK_INCDIR SDK_INCLUDES SDK_LIBS SDK_LIBDIR SDK_LDSCRIPT \
-			SDK_STARTUP SDK_FLASH_TOOL TOOLCHAIN_PREFIX TOOLCHAIN_DIR TOOLCHAIN_ETC; do
+			SDK_STARTUP SDK_DEBUG_TOOL SDK_FLASH_TOOL TOOLCHAIN_PREFIX TOOLCHAIN_DIR TOOLCHAIN_ETC; do
 			if [ -n "$(eval "echo \$${varname}")" ]; then
 				echo "export ${varname}=\"$(eval "echo \$${varname}")\""
 			fi
